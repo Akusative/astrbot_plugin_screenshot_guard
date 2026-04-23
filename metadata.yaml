@@ -1,0 +1,6 @@
+name: astrbot_plugin_screenshot_guard
+desc: 远程截屏查看插件 - 通过Bark推送通知到iPhone，用户截屏后自动上传到服务器
+version: "1.0.0"
+author: "沈菀"
+repo: ""
+homepage: ""
