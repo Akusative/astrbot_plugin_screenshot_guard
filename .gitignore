@@ -1,4 +1,5 @@
-screenshots/
-data/
 __pycache__/
 *.pyc
+data/app_usage.json
+data/config.json
+screenshots/

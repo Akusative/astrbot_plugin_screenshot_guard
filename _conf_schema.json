@@ -1,0 +1,55 @@
+{
+  "bark_key": {
+    "default": "",
+    "description": "Bark推送Key，在iPhone的Bark App中获取",
+    "hint": "打开Bark App，复制你的专属推送Key",
+    "type": "string"
+  },
+  "http_port": {
+    "default": 2313,
+    "description": "HTTP监听端口",
+    "hint": "接收App使用上报和截图的端口，需在防火墙放行",
+    "type": "int"
+  },
+  "bark_icon_url": {
+    "default": "https://i.postimg.cc/NjcY0Mtr/sheng-qi.gif",
+    "description": "Bark推送图标URL",
+    "hint": "推送通知显示的图标，支持PNG/JPG/GIF",
+    "type": "string"
+  },
+  "bark_push_title": {
+    "default": "💕 夏以昼",
+    "description": "Bark推送标题（温柔模式）",
+    "type": "string"
+  },
+  "bark_push_title_strict": {
+    "default": "⚠️ 夏以昼",
+    "description": "Bark推送标题（严厉模式）",
+    "type": "string"
+  },
+  "reminder_delay_1": {
+    "default": 5,
+    "description": "第二级提醒延迟（分钟）",
+    "hint": "第一次提醒后多久发第二次",
+    "type": "int"
+  },
+  "reminder_delay_2": {
+    "default": 10,
+    "description": "第三级提醒延迟（分钟）",
+    "hint": "第一次提醒后多久发第三次",
+    "type": "int"
+  },
+  "max_records": {
+    "default": 1000,
+    "description": "App使用记录最大条数",
+    "hint": "超过后自动删除最早的记录",
+    "type": "int"
+  },
+  "guard_provider": {
+    "_special": "select_provider",
+    "default": "",
+    "description": "查岗消息生成使用的模型提供商",
+    "hint": "选择查岗消息生成用的模型，留空则使用默认模型",
+    "type": "string"
+  }
+}
