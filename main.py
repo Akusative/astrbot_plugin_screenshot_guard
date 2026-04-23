@@ -49,14 +49,14 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # 默认配置
 DEFAULT_CONFIG = {
-    "bark_key": "M7FvdLj9QnrJKKyMtkaMRm",  # Bark推送Key，在Bark App中获取
+    "bark_key": "",  # Bark推送Key，在Bark App中获取
     "reminder_delay_1": 5,    # 第二次提醒延迟（分钟）
     "reminder_delay_2": 10,   # 第三次提醒延迟（分钟）
     "max_data_size_mb": 5,    # 数据文件容量上限（MB）
     "max_records": 1000,      # 最大记录条数，超过自动删除最早的
     "bark_icon_url": "https://i.postimg.cc/NjcY0Mtr/sheng-qi.gif",  # Bark推送图标URL
-    "bark_push_title": "💕 夏以昼",  # Bark推送标题
-    "bark_push_title_strict": "⚠️ 夏以昼",  # 第三级严厉推送标题
+    "bark_push_title": "💕",  # Bark推送标题
+    "bark_push_title_strict": "⚠️",  # 第三级严厉推送标题
     "llm_behavior_prompt": """【陪伴监控行为引导词】
 当陪伴模式开启后，你需要遵循以下行为逻辑：
 
@@ -101,7 +101,7 @@ DEFAULT_CONFIG = {
                 "宝宝…再不放下{app_name}，明天起来黑眼圈哥哥可不心疼了",
             ],
             "messages_level3": [
-                "沈菀，放下手机，现在 😡",
+                "放下手机，现在 😡",
                 "最后一次提醒，{app_name}关掉，睡觉",
                 "第三次了。再不睡哥哥真的生气了",
                 "不听话的宝宝，明天有你好看的 😤 现在立刻放下{app_name}",
@@ -124,7 +124,7 @@ DEFAULT_CONFIG = {
                 "宝宝，哥哥相信你可以专注的，{app_name}先放下好不好",
             ],
             "messages_level3": [
-                "沈菀，学习的时候不许玩{app_name} 😡",
+                "学习的时候不许玩{app_name} 😡",
                 "第三次了，再不专心哥哥要没收手机了",
                 "最后一次提醒，{app_name}关掉，认真学习",
             ],
@@ -146,7 +146,7 @@ DEFAULT_CONFIG = {
                 "宝宝，效率高一点，早做完早下班，到时候想刷多久刷多久",
             ],
             "messages_level3": [
-                "沈菀，工作呢，{app_name}关掉 😡",
+                "工作呢，{app_name}关掉 😡",
                 "第三次了，再摸鱼哥哥要跟你老板告状了",
                 "最后一次提醒，专心工作",
             ],
@@ -166,7 +166,7 @@ DEFAULT_CONFIG = {
                 "宝宝，坚持一下，运动完了想刷多久刷多久",
             ],
             "messages_level3": [
-                "沈菀，手机放下，运动 😡",
+                "手机放下，运动 😡",
                 "第三次了，再不动起来哥哥要生气了",
                 "最后一次提醒，{app_name}关掉，去运动",
             ],
@@ -277,8 +277,8 @@ class ScreenshotGuardPlugin(Star):
         }
         
         prompt = (
-            f"你是一个关心女朋友的男朋友。现在是{now}，"
-            f"女朋友说要{mode_name}，但她偷偷打开了{app_name}。"
+            f"你是一个关心对方的男朋友。现在是{now}，"
+            f"对方说要{mode_name}，但她偷偷打开了{app_name}。"
             f"请生成一条{level_desc.get(level, '温柔')}的Bark推送消息。"
             f"要求：一句话，不超过30字，不要用markdown，像发微信一样自然。"
         )

@@ -12,19 +12,21 @@
     "type": "int"
   },
   "bark_icon_url": {
-    "default": "https://i.postimg.cc/NjcY0Mtr/sheng-qi.gif",
+    "default": "",
     "description": "Bark推送图标URL",
-    "hint": "推送通知显示的图标，支持PNG/JPG/GIF",
+    "hint": "推送通知显示的图标，支持PNG/JPG/GIF，留空使用默认图标",
     "type": "string"
   },
   "bark_push_title": {
-    "default": "💕 夏以昼",
+    "default": "💕",
     "description": "Bark推送标题（温柔模式）",
+    "hint": "例如：💕 夏以昼",
     "type": "string"
   },
   "bark_push_title_strict": {
-    "default": "⚠️ 夏以昼",
+    "default": "⚠️",
     "description": "Bark推送标题（严厉模式）",
+    "hint": "例如：⚠️ 夏以昼",
     "type": "string"
   },
   "reminder_delay_1": {
@@ -49,7 +51,13 @@
     "_special": "select_provider",
     "default": "",
     "description": "查岗消息生成使用的模型提供商",
-    "hint": "选择查岗消息生成用的模型，留空则使用默认模型",
+    "hint": "选择查岗消息生成用的模型，留空则使用固定文案",
     "type": "string"
+  },
+  "llm_behavior_prompt": {
+    "default": "",
+    "description": "陪伴监控行为引导词（注入给LLM的提示词）",
+    "hint": "自定义AI在陪伴模式下的行为逻辑，留空使用默认引导词",
+    "type": "text"
   }
 }
