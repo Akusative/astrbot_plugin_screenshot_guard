@@ -669,6 +669,62 @@ class ScreenshotGuardPlugin(Star):
     
     # ========== 手动指令（保留作为备用） ==========
     
+    async def _manual_start_mode(self, event: AstrMessageEvent, mode: str):
+        """手动开启陪伴模式的通用方法"""
+        await self._start_http_server()
+        await self._cancel_all_reminders()
+        
+        self._current_mode = mode
+        self._mode_start_time = datetime.now()
+        mode_name = self._config["modes"][mode]["name"]
+        
+        default_msgs = {
+            "sleep": "晚安监控已开启，不许偷偷在被窝里玩手机哦 💤",
+            "study": "学习监控已开启，专心学习，不许摸鱼 📚",
+            "work": "工作监控已开启，认真工作，摸鱼会被抓到的 💪",
+            "exercise": "运动监控已开启，放下手机动起来 🏃",
+        }
+        await self._send_bark_push(self._config.get("bark_push_title", "💕"), default_msgs.get(mode, "监控已开启"))
+        
+        yield event.plain_result(f"{mode_name}模式已开启，Bark推送已发送")
+    
+    @filter.command("睡眠陪伴", alias={"晚安监控", "睡眠监控", "sleep"})
+    async def cmd_sleep_mode(self, event: AstrMessageEvent):
+        """手动开启睡眠陪伴模式"""
+        async for result in self._manual_start_mode(event, "sleep"):
+            yield result
+    
+    @filter.command("学习陪伴", alias={"学习监控", "study"})
+    async def cmd_study_mode(self, event: AstrMessageEvent):
+        """手动开启学习陪伴模式"""
+        async for result in self._manual_start_mode(event, "study"):
+            yield result
+    
+    @filter.command("工作陪伴", alias={"工作监控", "work"})
+    async def cmd_work_mode(self, event: AstrMessageEvent):
+        """手动开启工作陪伴模式"""
+        async for result in self._manual_start_mode(event, "work"):
+            yield result
+    
+    @filter.command("运动陪伴", alias={"运动监控", "exercise"})
+    async def cmd_exercise_mode(self, event: AstrMessageEvent):
+        """手动开启运动陪伴模式"""
+        async for result in self._manual_start_mode(event, "exercise"):
+            yield result
+    
+    @filter.command("关闭陪伴", alias={"关闭监控", "停止监控", "stop"})
+    async def cmd_stop_mode(self, event: AstrMessageEvent):
+        """手动关闭陪伴模式"""
+        if not self._current_mode:
+            yield event.plain_result("当前没有开启任何陪伴模式")
+            return
+        
+        mode_name = self._config["modes"][self._current_mode]["name"]
+        await self._cancel_all_reminders()
+        self._current_mode = None
+        self._mode_start_time = None
+        yield event.plain_result(f"{mode_name}模式已关闭")
+    
     @filter.command("查看手机", alias={"截屏", "看看手机", "screenshot"})
     async def request_screenshot(self, event: AstrMessageEvent):
         """发送截屏请求"""
