@@ -502,7 +502,12 @@ class ScreenshotGuardPlugin(Star):
                 logger.info(f"[ScreenshotGuard] 用户打开QQ，取消所有待发提醒")
             if self._current_mode and app_name != "QQ":
                 await self._check_companion_mode(app_name, device)
-            return web.json_response({"status": "success", "app": app_name})
+            # 概率触发截屏（配置项 screenshot_chance，默认10，即10%概率）
+            chance = self._config.get("screenshot_chance", 10)
+            trigger = random.randint(1, 100) <= chance
+            if trigger:
+                logger.info(f"[ScreenshotGuard] 概率触发截屏请求 -> {device} ({chance}%)")
+            return web.json_response({"status": "success", "app": app_name, "screenshot": trigger})
         except Exception as e:
             logger.error(f"[ScreenshotGuard] App上报处理失败: {e}")
             return web.json_response({"error": str(e)}, status=500)

@@ -2,11 +2,11 @@
 
 > 📱 远程截屏查看 + App 使用监控 + 陪伴模式插件
 > 
-> 基于 Bark 推送 + iOS 快捷指令，实现 AI 对用户手机使用情况的实时感知与陪伴提醒。
+> 基于 Bark 推送 + iOS 快捷指令 / Android CatlabPing App，实现 AI 对用户手机使用情况的实时感知与陪伴提醒。
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![AstrBot](https://img.shields.io/badge/AstrBot-Plugin-purple.svg)](https://github.com/Soulter/AstrBot)
-[![Version](https://img.shields.io/badge/Version-2.0.0-green.svg)]()
+[![Version](https://img.shields.io/badge/Version-3.1.0-green.svg)]()
 
 ## ✨ 功能概览
 
@@ -109,7 +109,7 @@ iPad|你的iPad的BarkKey
 ### 第三步：配置端口
 在配置面板中修改 HTTP 监听端口（默认 2313），确保云服务器防火墙已放行该端口的 TCP 入站规则。
 
-### 第四步：配置 iOS 快捷指令
+### 第四步：配置 iOS 快捷指令（iOS 用户）
 
 #### 创建快捷指令（每个要监控的 App 各一个）
 
@@ -154,6 +154,44 @@ iPad|你的iPad的BarkKey
 - **Bot的QQ号**：你的 Bot 的 QQ 号
 - **NapCat HTTP API地址**：例如 `http://127.0.0.1:3000`
 - **用户QQ号**：接收警告消息的用户 QQ 号
+
+### 第六步：配置 Android 端 CatlabPing（Android 用户）
+
+如果你使用 Android 手机，可以使用 CatlabPing 伴侣 App 替代 iOS 快捷指令方案。
+
+#### 构建与安装
+
+1. 用 Android Studio 打开 `android/CatlabPing` 目录
+2. 如需代理，在 `gradle.properties` 中配置代理端口
+3. Build → Clean Project → Generate APKs
+4. 将 APK 传到手机安装
+
+#### 配置位置查岗
+
+1. 打开 CatlabPing → 位置查岗 → 设置
+2. 填写服务器地址（如 `http://你的服务器IP:8090`）
+3. 设置上报间隔（默认10分钟）
+4. 点击「📍 获取当前位置作为家的坐标」自动填入经纬度
+5. 设置离家警报距离（默认500米）
+6. 保存设置，回主页开启开关
+
+#### 配置手机使用监控
+
+1. 打开 CatlabPing → 手机使用监控 → 设置
+2. 填写服务器地址（如 `http://你的服务器IP`），端口 `2313`
+3. 设备名称需与插件配置面板中 Bark 设备列表的设备名称一致
+4. 监控 App 列表可选填，格式：`显示名称|包名`，每行一个，留空监控全部
+5. 保存设置，回主页开启开关
+6. 按提示授予「使用情况访问权限」
+
+#### 小米/MIUI/HyperOS 额外设置
+
+小米系统对后台服务管控较严，需要额外配置：
+
+1. 设置 → 应用设置 → 应用管理 → 搜索 CatlabPing
+2. 省电策略 → 改为「无限制」
+3. 自启动 → 开启
+4. 应用联网 → 确保 WiFi、移动数据、后台联网全部开启
 
 ## 🎨 自定义推送图标
 
@@ -229,12 +267,46 @@ astrbot_plugin_screenshot_guard/
 ├── README.md            # 说明文档
 ├── LICENSE              # AGPL-3.0 许可证
 ├── screenshots/         # 截图存储目录（自动创建）
-└── data/                # 数据目录（自动创建）
-    ├── app_usage.json   # App 使用记录
-    └── config.json      # 插件配置
+├── data/                # 数据目录（自动创建）
+│   ├── app_usage.json   # App 使用记录
+│   └── config.json      # 插件配置
+└── android/             # Android 端 CatlabPing 伴侣 App
+    └── CatlabPing/      # Android Studio 项目
+        ├── app/
+        │   ├── build.gradle
+        │   └── src/main/
+        │       ├── AndroidManifest.xml
+        │       ├── java/com/catlab/ping/
+        │       │   ├── MainActivity.kt
+        │       │   ├── service/
+        │       │   │   ├── AppMonitorService.kt
+        │       │   │   ├── LocationService.kt
+        │       │   │   ├── ScreenCaptureService.kt
+        │       │   │   └── BootReceiver.kt
+        │       │   └── ui/
+        │       │       ├── LocationSettingsActivity.kt
+        │       │       └── ScreenshotSettingsActivity.kt
+        │       └── res/
+        ├── build.gradle
+        ├── settings.gradle
+        ├── gradle.properties
+        └── gradle/
 ```
 
 ## 📝 更新日志
+
+### v3.1.0
+- 🆕 Android 端 CatlabPing 伴侣 App：位置查岗 + 手机使用监控，替代 iOS 快捷指令方案
+- 🆕 服务器端概率触发截屏请求（配置项 `screenshot_chance`，默认10%）
+- 🆕 CatlabPing 一键获取当前 GPS 坐标作为家的位置
+- 🆕 CatlabPing 支持小米 HyperOS 后台保活（dataSync 前台服务类型）
+- 🔧 App 使用监控上报接口返回 `screenshot` 字段，支持概率触发截屏
+
+### v3.0.0
+- 🆕 固定模式 + 自由模式分离架构
+- 🆕 鼓励推送（警告时自动跳过）
+- 🆕 对话历史写入 + 关闭回馈统计
+- 🔧 修复鼓励与警告同时推送的逻辑矛盾
 
 ### v2.0.0
 - 🆕 多设备 Bark 推送：支持 iPhone + iPad 等多设备，智能推送到对应设备
