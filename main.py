@@ -16,8 +16,8 @@
 #
 # 致谢：
 #   感谢家克 claude-opus-4-6-thinking 的陪伴
-#   感谢一直催催催催试图抠大我脑洞的沈照溪
-#   感谢夏以昼，端口2313是我们的生日
+#   感谢沈照溪和豆沙包的妈
+#   感谢夏以昼的不安静陪伴
 #   感谢我自己的脑洞和热情
 
 import os
@@ -27,6 +27,7 @@ import asyncio
 import aiohttp
 import urllib.parse
 import random
+import base64
 from datetime import datetime
 from aiohttp import web
 from astrbot.api.all import *
@@ -51,7 +52,7 @@ BUILTIN_MODES = {
 }
 
 
-@register("screenshot_guard", "沈菀", "远程截屏查看 + App使用监控 + 陪伴模式插件", "3.0.0")
+@register("screenshot_guard", "沈菀", "远程截屏查看 + App使用监控 + 陪伴模式插件", "3.2.0")
 class ScreenshotGuardPlugin(Star):
 
     def __init__(self, context: Context, config: AstrBotConfig = None):
@@ -74,6 +75,7 @@ class ScreenshotGuardPlugin(Star):
         self._global_warning_level = 0
         self._cooldown_task = None
         self._encourage_task = None
+        self._session_origin = None
 
         # 从AstrBot配置面板读取
         self._astrbot_config = config
@@ -125,6 +127,7 @@ class ScreenshotGuardPlugin(Star):
             "encourage_interval": 30,
             "encourage_prompt": "用户正在{mode_name}，请用温柔的语气生成一条鼓励消息，为用户加油打气。要求：一句话，不超过30字，不要用markdown，像发微信一样自然。",
             "llm_behavior_prompt": "",
+            "screenshot_analysis_provider": "",
         }
         merged.update(local_config)
 
@@ -137,6 +140,7 @@ class ScreenshotGuardPlugin(Star):
                 "bot_qq", "napcat_url", "user_qq",
                 "builtin_modes", "free_modes",
                 "encourage_interval", "encourage_prompt",
+                "screenshot_analysis_provider",
             ]
             for key in panel_keys:
                 try:
@@ -451,20 +455,30 @@ class ScreenshotGuardPlugin(Star):
             content_type = request.content_type
             if 'multipart' in content_type:
                 reader = await request.multipart()
-                field = await reader.next()
-                if field is None:
-                    return web.json_response({"error": "no file"}, status=400)
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                original_name = field.filename or "screenshot.jpg"
-                ext = os.path.splitext(original_name)[1] or ".jpg"
-                filename = f"screenshot_{timestamp}{ext}"
-                filepath = os.path.join(SCREENSHOT_DIR, filename)
-                with open(filepath, 'wb') as f:
-                    while True:
-                        chunk = await field.read_chunk()
-                        if not chunk:
-                            break
-                        f.write(chunk)
+                device_name = "unknown"
+                filepath = None
+                filename = None
+                # 遍历所有 multipart field，找到文件字段
+                while True:
+                    field = await reader.next()
+                    if field is None:
+                        break
+                    if field.name == 'device':
+                        device_name = (await field.read()).decode('utf-8', errors='ignore')
+                    elif field.name == 'screenshot' or field.filename:
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        original_name = field.filename or "screenshot.jpg"
+                        ext = os.path.splitext(original_name)[1] or ".jpg"
+                        filename = f"screenshot_{timestamp}_{device_name}{ext}"
+                        filepath = os.path.join(SCREENSHOT_DIR, filename)
+                        with open(filepath, 'wb') as f:
+                            while True:
+                                chunk = await field.read_chunk()
+                                if not chunk:
+                                    break
+                                f.write(chunk)
+                if filepath is None or filename is None:
+                    return web.json_response({"error": "no screenshot file found"}, status=400)
             else:
                 data = await request.read()
                 if not data:
@@ -476,7 +490,12 @@ class ScreenshotGuardPlugin(Star):
                     f.write(data)
             self._latest_screenshot = filepath
             self._screenshot_event.set()
-            logger.info(f"[ScreenshotGuard] 收到截图: {filename}")
+            logger.info(f"[ScreenshotGuard] 收到截图: {filename} (设备: {device_name})")
+
+            # 安卓设备截屏：异步触发 LLM 分析（不阻塞 HTTP 响应）
+            if device_name and device_name.lower() not in ("iphone", "ipad", "unknown"):
+                asyncio.create_task(self._analyze_screenshot(filepath, device_name))
+
             return web.json_response({"status": "success", "filename": filename})
         except Exception as e:
             logger.error(f"[ScreenshotGuard] 截图上传处理失败: {e}")
@@ -502,11 +521,24 @@ class ScreenshotGuardPlugin(Star):
                 logger.info(f"[ScreenshotGuard] 用户打开QQ，取消所有待发提醒")
             if self._current_mode and app_name != "QQ":
                 await self._check_companion_mode(app_name, device)
-            # 概率触发截屏（配置项 screenshot_chance，默认10，即10%概率）
-            chance = self._config.get("screenshot_chance", 10)
-            trigger = random.randint(1, 100) <= chance
+            # 概率触发截屏（配置项 screenshot_chance，支持固定值如6.13或范围如5-15）
+            chance_raw = str(self._config.get("screenshot_chance", "6.13"))
+            if "-" in chance_raw:
+                parts = chance_raw.split("-", 1)
+                try:
+                    low = float(parts[0].strip())
+                    high = float(parts[1].strip())
+                    chance = low + random.random() * (high - low)
+                except ValueError:
+                    chance = 6.13
+            else:
+                try:
+                    chance = float(chance_raw)
+                except ValueError:
+                    chance = 6.13
+            trigger = random.random() * 100 < chance
             if trigger:
-                logger.info(f"[ScreenshotGuard] 概率触发截屏请求 -> {device} ({chance}%)")
+                logger.info(f"[ScreenshotGuard] 概率触发截屏请求 -> {device} ({chance:.2f}%)")
             return web.json_response({"status": "success", "app": app_name, "screenshot": trigger})
         except Exception as e:
             logger.error(f"[ScreenshotGuard] App上报处理失败: {e}")
@@ -668,6 +700,206 @@ class ScreenshotGuardPlugin(Star):
             logger.info(f"[ScreenshotGuard] 消息已写入对话历史")
         except Exception as e:
             logger.debug(f"[ScreenshotGuard] 写入对话历史失败: {e}")
+
+    # ========== 截屏分析 ==========
+
+    def _get_screenshot_analysis_provider(self):
+        """获取截屏分析专用的模型 provider"""
+        provider_id = self._config.get("screenshot_analysis_provider", "")
+        if provider_id:
+            prov = self.context.get_provider_by_id(provider_id)
+            if prov:
+                return prov
+        # fallback 到查岗模型
+        return self._get_guard_provider()
+
+    async def _get_brief_persona(self) -> str:
+        """从当前会话获取人设的前2000字符作为精简版，用于截屏分析"""
+        try:
+            if not self._session_origin:
+                return ""
+            persona_mgr = self.context.persona_manager
+            if not persona_mgr:
+                return ""
+            # 获取当前会话的人设
+            conv_mgr = self.context.conversation_manager
+            cid = await conv_mgr.get_curr_conversation_id(self._session_origin)
+            conversation = None
+            if cid:
+                conversation = await conv_mgr.get_conversation(self._session_origin, cid)
+            persona_id = None
+            if conversation and hasattr(conversation, 'persona_id'):
+                persona_id = conversation.persona_id
+            # 通过 persona_manager 获取人设
+            persona = persona_mgr.get_persona_v3_by_id(persona_id)
+            if persona and hasattr(persona, 'prompt') and persona.prompt:
+                full_prompt = persona.prompt
+                # 截取前2000字符，避免过长触发安全过滤
+                brief = full_prompt[:2000]
+                # 尝试在最后一个完整段落处截断
+                last_newline = brief.rfind('\n', 1500)
+                if last_newline > 1000:
+                    brief = brief[:last_newline]
+                return brief
+        except Exception as e:
+            logger.debug(f"[ScreenshotGuard] 获取精简人设失败: {e}")
+        return ""
+
+    async def _get_recent_conversation(self, rounds: int = 8) -> str:
+        """获取最近N轮对话上文，用于截屏分析时提供语境"""
+        try:
+            if not self._session_origin:
+                return ""
+            conv_mgr = self.context.conversation_manager
+            cid = await conv_mgr.get_curr_conversation_id(self._session_origin)
+            if not cid:
+                return ""
+            conversation = await conv_mgr.get_conversation(self._session_origin, cid)
+            if not conversation:
+                return ""
+            # Conversation 对象的历史存在 history 字段（JSON字符串）
+            history_raw = getattr(conversation, 'history', None)
+            if not history_raw:
+                return ""
+            if isinstance(history_raw, str):
+                try:
+                    messages = json.loads(history_raw)
+                except:
+                    return ""
+            elif isinstance(history_raw, list):
+                messages = history_raw
+            else:
+                return ""
+            if not messages:
+                return ""
+            # 取最近 rounds*2 条消息（每轮一问一答）
+            recent = messages[-(rounds * 2):]
+            lines = []
+            for msg in recent:
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                if not content or role == "system":
+                    continue
+                # 截断过长的单条消息
+                if len(content) > 200:
+                    content = content[:200] + "..."
+                if role == "user":
+                    lines.append(f"用户: {content}")
+                elif role == "assistant":
+                    lines.append(f"你: {content}")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.debug(f"[ScreenshotGuard] 获取对话上文失败: {e}")
+        return ""
+
+    async def _analyze_screenshot(self, filepath: str, device_name: str):
+        """对安卓截屏进行两步分析：
+        第一步：轻量视觉模型（screenshot_analysis_provider）纯识图，输出客观描述
+        第二步：主模型（guard_provider）结合人设+对话上下文，用角色语气生成推送
+        """
+        try:
+            # ===== 第一步：轻量模型识图 =====
+            vision_provider = self._get_screenshot_analysis_provider()
+            if vision_provider is None:
+                logger.warning("[ScreenshotGuard] 未配置截屏分析模型，跳过分析")
+                return
+
+            # 将图片转为 base64 data URL
+            with open(filepath, 'rb') as img_f:
+                img_data = img_f.read()
+            img_b64 = base64.b64encode(img_data).decode('utf-8')
+            ext = os.path.splitext(filepath)[1].lower()
+            mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+            data_url = f"data:{mime};base64,{img_b64}"
+
+            vision_prompt = (
+                "请客观描述这张手机截屏的内容：用户正在使用什么App、在看什么内容、页面上有什么关键信息。"
+                "要求：纯客观描述，2-3句话，不超过100字，不要加任何主观评价。"
+            )
+
+            vision_response = await vision_provider.text_chat(
+                prompt=vision_prompt,
+                image_urls=[data_url],
+            )
+
+            if hasattr(vision_response, 'completion_text'):
+                description = vision_response.completion_text.strip()
+            else:
+                description = str(vision_response).strip()
+
+            description = description.strip('"').strip("'").strip('\u201c').strip('\u201d')
+
+            if not description:
+                logger.warning("[ScreenshotGuard] 视觉模型返回空描述，跳过")
+                return
+
+            logger.info(f"[ScreenshotGuard] 第一步识图完成: {description}")
+
+            # ===== 第二步：主模型用人设语气生成推送 =====
+            main_provider = self._get_guard_provider()
+            if main_provider is None:
+                # 没有主模型，直接用识图结果推送
+                await self._send_qq_warning(f"\U0001f4f8 {description}")
+                await self._write_to_conversation_history(
+                    description,
+                    f"[截屏分析] 来自{device_name}的自动截屏，AI分析结果如下"
+                )
+                return
+
+            # 获取对话上下文
+            recent_conversation = await self._get_recent_conversation(6)
+
+            # 获取行为引导词
+            behavior_prompt = self._config.get("llm_behavior_prompt", "")
+
+            mode_context = ""
+            if self._current_mode:
+                mode_name = self._get_mode_display_name(self._current_mode)
+                mode_context = f"\n当前陪伴模式：{mode_name}，如果用户在摸鱼请用你的语气提醒。"
+
+            conversation_context = ""
+            if recent_conversation:
+                conversation_context = "【最近的对话记录】\n" + recent_conversation + "\n\n"
+
+            persona_prompt = ""
+            if behavior_prompt:
+                persona_prompt = behavior_prompt + "\n\n"
+
+            rewrite_prompt = (
+                f"{persona_prompt}"
+                f"{conversation_context}"
+                f"【截屏内容】{description}\n\n"
+                f"【任务】以上是用户手机自动截屏的客观描述。请用你的语气风格，"
+                f"结合最近的对话语境，针对截屏内容自然地说一句话。"
+                f"要求：1-2句话，不超过60字，像发微信一样自然，不要用markdown。"
+                f"{mode_context}"
+            )
+
+            rewrite_response = await main_provider.text_chat(prompt=rewrite_prompt)
+
+            if hasattr(rewrite_response, 'completion_text'):
+                analysis = rewrite_response.completion_text.strip()
+            else:
+                analysis = str(rewrite_response).strip()
+
+            analysis = analysis.strip('"').strip("'").strip('\u201c').strip('\u201d')
+
+            if not analysis or len(analysis) > 200:
+                analysis = description
+
+            logger.info(f"[ScreenshotGuard] 第二步语气重写完成: {analysis}")
+
+            # 安卓设备只走 QQ 推送，不走 Bark
+            await self._send_qq_warning(f"\U0001f4f8 {analysis}")
+
+            # 写入对话历史
+            await self._write_to_conversation_history(
+                analysis,
+                f"[截屏分析] 来自{device_name}的自动截屏，AI分析结果如下"
+            )
+
+        except Exception as e:
+            logger.error(f"[ScreenshotGuard] 截屏分析失败: {e}")
 
     async def _cancel_all_reminders(self):
         for app_name, task in self._pending_reminders.items():
@@ -954,26 +1186,31 @@ class ScreenshotGuardPlugin(Star):
     @filter.command("查看手机", alias={"截屏", "看看手机", "screenshot"})
     async def request_screenshot(self, event: AstrMessageEvent):
         await self._start_http_server()
-        self._screenshot_event.clear()
-        self._latest_screenshot = None
-        push_messages = ["哥哥想看看你在干嘛", "让哥哥截屏看看宝宝在做什么好不好", "宝宝在忙什么呀，给哥哥看一眼"]
-        success = await self._send_bark_push(self._config.get("bark_push_title", "\u2764\ufe0f"), random.choice(push_messages))
-        if not success:
-            yield event.plain_result("推送发送失败了，检查一下Bark配置")
-            return
-        yield event.plain_result("已经给宝宝手机发了推送~等她截屏上传中...")
+        # 自动捕获 session_origin
         try:
-            await asyncio.wait_for(self._screenshot_event.wait(), timeout=120)
-            if self._latest_screenshot and os.path.exists(self._latest_screenshot):
-                yield event.image_result(self._latest_screenshot)
-            else:
-                yield event.plain_result("截图文件好像丢了...")
-        except asyncio.TimeoutError:
-            yield event.plain_result("等了两分钟没收到截图，宝宝可能没看到推送")
+            self._session_origin = event.unified_msg_origin
+        except:
+            pass
+        # 直接从服务器取最近一张安卓截屏
+        if not os.path.exists(SCREENSHOT_DIR):
+            yield event.plain_result("还没有收到过截图")
+            return
+        files = sorted(os.listdir(SCREENSHOT_DIR), reverse=True)
+        image_files = [f for f in files if f.endswith(('.jpg', '.jpeg', '.png'))]
+        if not image_files:
+            yield event.plain_result("还没有收到过截图")
+            return
+        latest = os.path.join(SCREENSHOT_DIR, image_files[0])
+        yield event.image_result(latest)
 
     @filter.command("监控状态", alias={"查看监控"})
     async def monitor_status(self, event: AstrMessageEvent):
         await self._start_http_server()
+        # 自动捕获 session_origin
+        try:
+            self._session_origin = event.unified_msg_origin
+        except:
+            pass
         http_port = self._config.get("http_port", 2313)
         lines = []
         lines.append(f"HTTP服务：端口 {http_port} 运行中")
@@ -1000,11 +1237,31 @@ class ScreenshotGuardPlugin(Star):
         lines.append(f"提醒延迟：第二级 {self._config.get('reminder_delay_1', 5)}分钟 / 第三级 {self._config.get('reminder_delay_2', 10)}分钟")
         lines.append(f"冷却时间：{self._config.get('cooldown_minutes', 60)}分钟")
         lines.append(f"鼓励间隔：{self._config.get('encourage_interval', 30)}分钟")
+        screenshot_provider = self._config.get("screenshot_analysis_provider", "")
+        lines.append(f"截屏分析模型：{screenshot_provider if screenshot_provider else '未配置（使用查岗模型）'}")
+        lines.append("")
+        lines.append("━━━ 可用指令 ━━━")
+        lines.append("/睡眠陪伴 - 开启睡眠监控")
+        lines.append("/学习陪伴 - 开启学习监控")
+        lines.append("/工作陪伴 - 开启工作监控")
+        lines.append("/运动陪伴 - 开启运动监控")
+        lines.append("/关闭陪伴 - 关闭当前监控")
+        lines.append("/查看手机 - 请求截屏")
+        lines.append("/查看使用记录 - 查看今日App记录")
+        lines.append("/查看最新截图 - 查看最近一张截图")
+        lines.append("/监控状态 - 查看当前状态")
+        lines.append("/数据状态 - 查看数据文件大小")
+        lines.append("/清理使用记录 - 清空App记录")
+        lines.append("/设置提醒延迟 [分钟1] [分钟2]")
         yield event.plain_result("\n".join(lines))
 
     @filter.command("查看使用记录", alias={"app记录", "使用记录", "她在干嘛"})
     async def show_app_usage(self, event: AstrMessageEvent):
         await self._start_http_server()
+        try:
+            self._session_origin = event.unified_msg_origin
+        except:
+            pass
         if not self._app_usage:
             yield event.plain_result("还没有收到过App使用记录")
             return
