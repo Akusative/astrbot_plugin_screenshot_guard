@@ -91,6 +91,49 @@
             android:background="@android:drawable/edit_text"
             android:layout_marginBottom="16dp" />
 
+        <!-- 概率截屏开关 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📸 启用概率截屏"
+                    android:textSize="16sp"
+                    android:textColor="#FF2D2D2D" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="关闭后仅上报App使用记录，不触发自动截屏"
+                    android:textSize="11sp"
+                    android:textColor="#FFAAAAAA" />
+
+            </LinearLayout>
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_screenshot_capture"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#FFE0E0E0"
+            android:layout_marginBottom="16dp" />
+
         <!-- 监控App列表 -->
         <TextView
             android:layout_width="match_parent"

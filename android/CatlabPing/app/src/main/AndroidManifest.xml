@@ -31,8 +31,8 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@android:drawable/sym_def_app_icon"
-        android:roundIcon="@android:drawable/sym_def_app_icon"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="CatlabPing"
         android:supportsRtl="true"
         android:theme="@style/Theme.CatlabPing"
@@ -60,10 +60,10 @@
             android:foregroundServiceType="location"
             android:exported="false" />
 
-        <!-- App监控服务（纯UsageStats轮询，使用dataSync类型） -->
+        <!-- App监控服务（含截屏功能，需要 dataSync + mediaProjection） -->
         <service
             android:name=".service.AppMonitorService"
-            android:foregroundServiceType="dataSync"
+            android:foregroundServiceType="dataSync|mediaProjection"
             android:exported="false" />
 
         <!-- 截屏服务（独立，需要mediaProjection授权） -->

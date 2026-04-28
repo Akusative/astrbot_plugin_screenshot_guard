@@ -2,8 +2,11 @@
  * CatlabPing - 截屏前台服务
  * Copyright (C) 2026 沈菀 (Akusative) - AGPL-3.0
  *
- * 接收 MediaProjection 授权后，执行截屏并上传到服务器。
- * 此服务仅在需要截屏时启动，截屏完成后自动停止。
+ * 从 ProjectionHolder 获取或复用 MediaProjection 实例，
+ * 执行截屏并上传到服务器。
+ * Callback 已在 ProjectionHolder 创建实例时注册，此处不再重复注册。
+ *
+ * [调试版] 关键节点增加 Toast 提示
  */
 
 package com.catlab.ping.service
@@ -19,7 +22,6 @@ import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.media.projection.MediaProjection
-import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -27,8 +29,10 @@ import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.catlab.ping.MainActivity
+import com.catlab.ping.ProjectionHolder
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -41,16 +45,19 @@ class ScreenCaptureService : Service() {
         const val TAG = "ScreenCaptureService"
         const val CHANNEL_ID = "catlab_ping_screen_capture"
         const val NOTIFICATION_ID = 2002
-        const val EXTRA_RESULT_CODE = "result_code"
-        const val EXTRA_RESULT_DATA = "result_data"
     }
 
     private lateinit var prefs: SharedPreferences
-    private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private val client = OkHttpClient()
     private val handler = Handler(Looper.getMainLooper())
+
+    private fun toast(msg: String) {
+        handler.post {
+            Toast.makeText(applicationContext, msg, Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -59,21 +66,14 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent == null) {
+        if (!ProjectionHolder.isAuthorized()) {
+            Log.e(TAG, "没有可用的 MediaProjection 授权")
+            toast("📸 截屏失败: 没有授权")
             stopSelf()
             return START_NOT_STICKY
         }
 
-        val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
-        val resultData = intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
-
-        if (resultCode != Activity.RESULT_OK || resultData == null) {
-            Log.e(TAG, "无效的 MediaProjection 授权数据")
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        // 启动前台服务（必须在 mediaProjection 之前）
+        // 先启动前台服务
         val notification = buildNotification("📸 正在截屏...")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
@@ -81,27 +81,27 @@ class ScreenCaptureService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // 获取 MediaProjection
-        val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
-
-        if (mediaProjection == null) {
-            Log.e(TAG, "无法获取 MediaProjection")
+        // 获取或复用 MediaProjection 实例（Callback 已在 ProjectionHolder 内注册）
+        val projection = ProjectionHolder.getOrCreateProjection(this)
+        if (projection == null) {
+            Log.e(TAG, "无法获取 MediaProjection 实例")
+            toast("📸 截屏失败: MediaProjection 为空")
             stopSelf()
             return START_NOT_STICKY
         }
 
-        // 延迟一小段时间再截屏，确保用户已切回目标App
+        Log.i(TAG, "MediaProjection 就绪，开始截屏")
+        toast("📸 开始截屏...")
+
         handler.postDelayed({
-            captureScreen()
+            captureScreen(projection)
         }, 500)
 
         return START_NOT_STICKY
     }
 
-    private fun captureScreen() {
+    private fun captureScreen(projection: MediaProjection) {
         try {
-            // 获取屏幕参数
             val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
             val metrics = DisplayMetrics()
             @Suppress("DEPRECATION")
@@ -111,25 +111,23 @@ class ScreenCaptureService : Service() {
             val screenHeight = metrics.heightPixels
             val screenDensity = metrics.densityDpi
 
-            // 创建 ImageReader
             imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
 
-            // 创建 VirtualDisplay
-            virtualDisplay = mediaProjection?.createVirtualDisplay(
+            virtualDisplay = projection.createVirtualDisplay(
                 "CatlabPingCapture",
                 screenWidth, screenHeight, screenDensity,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader!!.surface, null, handler
             )
 
-            // 等待一帧画面
             handler.postDelayed({
                 processImage(screenWidth, screenHeight)
             }, 300)
 
         } catch (e: Exception) {
             Log.e(TAG, "截屏失败: ${e.message}")
-            cleanup()
+            toast("📸 截屏异常: ${e.message}")
+            cleanupCapture()
         }
     }
 
@@ -138,7 +136,8 @@ class ScreenCaptureService : Service() {
             val image = imageReader?.acquireLatestImage()
             if (image == null) {
                 Log.w(TAG, "未能获取到屏幕图像")
-                cleanup()
+                toast("📸 截屏失败: 获取图像为空")
+                cleanupCapture()
                 return
             }
 
@@ -148,7 +147,6 @@ class ScreenCaptureService : Service() {
             val rowStride = planes[0].rowStride
             val rowPadding = rowStride - pixelStride * width
 
-            // 创建 Bitmap
             val bitmap = Bitmap.createBitmap(
                 width + rowPadding / pixelStride,
                 height,
@@ -157,26 +155,26 @@ class ScreenCaptureService : Service() {
             bitmap.copyPixelsFromBuffer(buffer)
             image.close()
 
-            // 裁剪到实际屏幕大小
             val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height)
             if (croppedBitmap != bitmap) {
                 bitmap.recycle()
             }
 
-            // 压缩为 JPEG
             val outputStream = ByteArrayOutputStream()
             croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
             val imageBytes = outputStream.toByteArray()
             croppedBitmap.recycle()
 
-            Log.i(TAG, "截屏成功，图片大小: ${imageBytes.size / 1024}KB")
+            val sizeKb = imageBytes.size / 1024
+            Log.i(TAG, "截屏成功，图片大小: ${sizeKb}KB")
+            toast("📸 截屏成功 ${sizeKb}KB，正在上传...")
 
-            // 上传到服务器
             uploadScreenshot(imageBytes)
 
         } catch (e: Exception) {
             Log.e(TAG, "处理截屏图像失败: ${e.message}")
-            cleanup()
+            toast("📸 处理图像失败: ${e.message}")
+            cleanupCapture()
         }
     }
 
@@ -187,11 +185,13 @@ class ScreenCaptureService : Service() {
 
         if (serverUrl.isBlank()) {
             Log.w(TAG, "未配置服务器地址，跳过上传")
-            cleanup()
+            toast("📸 上传跳过: 未配置服务器地址")
+            cleanupCapture()
             return
         }
 
         val url = "${serverUrl.trimEnd('/')}:${port}/screenshot/upload"
+        Log.i(TAG, "上传地址: $url")
 
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
@@ -210,34 +210,41 @@ class ScreenCaptureService : Service() {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.e(TAG, "截屏上传失败: ${e.message}")
-                cleanup()
+                toast("📸 上传失败: ${e.message}")
+                cleanupCapture()
             }
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     if (it.isSuccessful) {
                         Log.i(TAG, "截屏上传成功！")
+                        toast("📸 上传成功！")
                     } else {
                         Log.w(TAG, "截屏上传返回异常: ${it.code}")
+                        toast("📸 上传异常: HTTP ${it.code}")
                     }
                 }
-                cleanup()
+                cleanupCapture()
             }
         })
     }
 
-    private fun cleanup() {
+    /**
+     * 只清理本次截屏的资源，不销毁 MediaProjection
+     */
+    private fun cleanupCapture() {
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader?.close()
         imageReader = null
-        mediaProjection?.stop()
-        mediaProjection = null
         stopSelf()
     }
 
     override fun onDestroy() {
-        cleanup()
+        virtualDisplay?.release()
+        virtualDisplay = null
+        imageReader?.close()
+        imageReader = null
         super.onDestroy()
     }
 

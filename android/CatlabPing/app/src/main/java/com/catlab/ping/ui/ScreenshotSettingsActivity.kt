@@ -12,6 +12,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.catlab.ping.R
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.materialswitch.MaterialSwitch
 
 class ScreenshotSettingsActivity : AppCompatActivity() {
 
@@ -27,6 +28,7 @@ class ScreenshotSettingsActivity : AppCompatActivity() {
         val etPort = findViewById<EditText>(R.id.et_screenshot_port)
         val etDeviceName = findViewById<EditText>(R.id.et_device_name)
         val etMonitorApps = findViewById<EditText>(R.id.et_monitor_apps)
+        val switchScreenshotCapture = findViewById<MaterialSwitch>(R.id.switch_screenshot_capture)
         val btnSave = findViewById<MaterialButton>(R.id.btn_screenshot_save)
 
         // 恢复已保存的值
@@ -34,6 +36,7 @@ class ScreenshotSettingsActivity : AppCompatActivity() {
         etPort.setText(prefs.getInt("screenshot_port", 2313).toString())
         etDeviceName.setText(prefs.getString("device_name", "Android"))
         etMonitorApps.setText(prefs.getString("monitor_apps", ""))
+        switchScreenshotCapture.isChecked = prefs.getBoolean("screenshot_capture_enabled", true)
 
         btnSave.setOnClickListener {
             prefs.edit().apply {
@@ -41,6 +44,7 @@ class ScreenshotSettingsActivity : AppCompatActivity() {
                 putInt("screenshot_port", etPort.text.toString().toIntOrNull() ?: 2313)
                 putString("device_name", etDeviceName.text.toString().trim())
                 putString("monitor_apps", etMonitorApps.text.toString().trim())
+                putBoolean("screenshot_capture_enabled", switchScreenshotCapture.isChecked)
                 apply()
             }
             Toast.makeText(this, "✅ 设置已保存", Toast.LENGTH_SHORT).show()
