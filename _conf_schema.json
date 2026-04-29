@@ -60,6 +60,13 @@
     "hint": "选择查岗消息生成用的模型，留空则使用固定文案",
     "type": "string"
   },
+  "screenshot_analysis_provider": {
+    "_special": "select_provider",
+    "default": "",
+    "description": "截屏识图模型（轻量视觉模型）",
+    "hint": "选择用于截屏识图分析的模型提供商。留空则依次使用：AstrBot全局识图模型 → 查岗模型 → 默认模型。建议选择支持视觉的轻量模型（如Gemini Flash），第一步识图用此模型，第二步生成推送仍用查岗模型",
+    "type": "string"
+  },
   "bot_qq": {
     "default": "",
     "description": "Bot的QQ号",

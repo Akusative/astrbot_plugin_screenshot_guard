@@ -492,6 +492,9 @@ class ScreenshotGuardPlugin(Star):
             self._screenshot_event.set()
             logger.info(f"[ScreenshotGuard] 收到截图: {filename} (设备: {device_name})")
 
+            # 自动清理超过2MB的旧截图
+            self._auto_cleanup_screenshots()
+
             # 安卓设备截屏：异步触发 LLM 分析（不阻塞 HTTP 响应）
             if device_name and device_name.lower() not in ("iphone", "ipad", "unknown"):
                 asyncio.create_task(self._analyze_screenshot(filepath, device_name))
@@ -704,14 +707,25 @@ class ScreenshotGuardPlugin(Star):
     # ========== 截屏分析 ==========
 
     def _get_screenshot_analysis_provider(self):
-        """获取截屏分析专用的模型 provider"""
+        """获取截屏分析专用的模型 provider
+        优先级：screenshot_analysis_provider > guard_provider > AstrBot默认模型
+        """
+        # 1. 优先使用配置的截屏识图模型
         provider_id = self._config.get("screenshot_analysis_provider", "")
         if provider_id:
             prov = self.context.get_provider_by_id(provider_id)
             if prov:
                 return prov
-        # fallback 到查岗模型
-        return self._get_guard_provider()
+        # 2. fallback 到查岗模型
+        guard_prov = self._get_guard_provider()
+        if guard_prov:
+            return guard_prov
+        # 3. fallback 到AstrBot默认模型
+        try:
+            from astrbot.core.provider.manager import ProviderType
+            return self.context.provider_manager.get_using_provider(ProviderType.CHAT_COMPLETION)
+        except Exception:
+            return None
 
     async def _get_brief_persona(self) -> str:
         """从当前会话获取人设的前2000字符作为精简版，用于截屏分析"""
@@ -1252,6 +1266,7 @@ class ScreenshotGuardPlugin(Star):
         lines.append("/监控状态 - 查看当前状态")
         lines.append("/数据状态 - 查看数据文件大小")
         lines.append("/清理使用记录 - 清空App记录")
+        lines.append("/清理截图 - 清空所有截图文件")
         lines.append("/设置提醒延迟 [分钟1] [分钟2]")
         yield event.plain_result("\n".join(lines))
 
@@ -1337,6 +1352,43 @@ class ScreenshotGuardPlugin(Star):
             total_size = sum(os.path.getsize(os.path.join(SCREENSHOT_DIR, f)) for f in screenshots)
             lines.append(f"截图文件：{len(screenshots)} 张，共 {total_size / 1024 / 1024:.1f}MB")
         yield event.plain_result("\n".join(lines))
+
+    @filter.command("清理截图", alias={"清空截图", "清理截屏", "清空截屏"})
+    async def clear_screenshots(self, event: AstrMessageEvent):
+        if not os.path.exists(SCREENSHOT_DIR):
+            yield event.plain_result("暂无截图文件")
+            return
+        screenshots = [f for f in os.listdir(SCREENSHOT_DIR) if f.endswith(('.jpg', '.jpeg', '.png'))]
+        if not screenshots:
+            yield event.plain_result("暂无截图文件")
+            return
+        total_size = sum(os.path.getsize(os.path.join(SCREENSHOT_DIR, f)) for f in screenshots)
+        for f in screenshots:
+            os.remove(os.path.join(SCREENSHOT_DIR, f))
+        yield event.plain_result(f"已清理 {len(screenshots)} 张截图，释放 {total_size / 1024 / 1024:.1f}MB")
+
+    def _auto_cleanup_screenshots(self):
+        """截图目录超过2MB时自动清理最早的截图"""
+        if not os.path.exists(SCREENSHOT_DIR):
+            return
+        screenshots = [f for f in os.listdir(SCREENSHOT_DIR) if f.endswith(('.jpg', '.jpeg', '.png'))]
+        if not screenshots:
+            return
+        total_size = sum(os.path.getsize(os.path.join(SCREENSHOT_DIR, f)) for f in screenshots)
+        if total_size <= 2 * 1024 * 1024:
+            return
+        # 按修改时间排序，最早的在前
+        screenshots.sort(key=lambda f: os.path.getmtime(os.path.join(SCREENSHOT_DIR, f)))
+        removed = 0
+        while total_size > 2 * 1024 * 1024 and screenshots:
+            oldest = screenshots.pop(0)
+            fpath = os.path.join(SCREENSHOT_DIR, oldest)
+            fsize = os.path.getsize(fpath)
+            os.remove(fpath)
+            total_size -= fsize
+            removed += 1
+        if removed > 0:
+            logger.info(f"[ScreenshotGuard] 自动清理了 {removed} 张旧截图，当前截图目录 {total_size / 1024 / 1024:.1f}MB")
 
     async def terminate(self):
         await self._cancel_all_reminders()
