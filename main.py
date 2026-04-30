@@ -1024,13 +1024,14 @@ class ScreenshotGuardPlugin(Star):
         else:
             push_msg = f"{self._current_mode_name}监控已开启"
 
-        await self._send_bark_push(self._config.get("bark_push_title", "\u2764\ufe0f"), push_msg)
+        bark_ok = await self._send_bark_push(self._config.get("bark_push_title", "\u2764\ufe0f"), push_msg)
         await self._start_encourage_timer()
 
         logger.info(f"[ScreenshotGuard] 陪伴模式开启: {self._current_mode_name}")
 
         behavior_prompt = self._config.get("llm_behavior_prompt", "")
-        result = f"{self._current_mode_name}模式已开启，Bark推送已发送"
+        bark_status = "Bark推送已发送" if bark_ok else "Bark未配置或推送失败，仅QQ提醒"
+        result = f"{self._current_mode_name}模式已开启，{bark_status}"
         if mode_config.get("description"):
             result += f"\n模式描述：{mode_config['description']}"
         if behavior_prompt:
@@ -1158,10 +1159,11 @@ class ScreenshotGuardPlugin(Star):
         self._mode_start_time = datetime.now()
 
         push_msg = f"{self._current_mode_name}监控已开启"
-        await self._send_bark_push(self._config.get("bark_push_title", "\u2764\ufe0f"), push_msg)
+        bark_ok = await self._send_bark_push(self._config.get("bark_push_title", "\u2764\ufe0f"), push_msg)
         await self._start_encourage_timer()
 
-        yield event.plain_result(f"{self._current_mode_name}模式已开启，Bark推送已发送")
+        bark_status = "Bark推送已发送" if bark_ok else "Bark未配置或推送失败，仅QQ提醒"
+        yield event.plain_result(f"{self._current_mode_name}模式已开启，{bark_status}")
 
     @filter.command("睡眠陪伴", alias={"晚安监控", "睡眠监控", "sleep"})
     async def cmd_sleep_mode(self, event: AstrMessageEvent):
