@@ -1,6 +1,6 @@
 name: astrbot_plugin_screenshot_guard
 desc: 远程截屏查看 + App使用监控 + 陪伴模式插件 - 多设备Bark推送 + 固定/自由陪伴模式 + 自定义白名单黑名单 + 三级递进提醒 + 冷却状态机 + 鼓励推送 + QQ同步警告 + Android端CatlabPing伴侣App
-version: "3.2.0"
+version: "3.2.2"
 author: "沈菀"
 repo: "https://github.com/Akusative/astrbot_plugin_screenshot_guard"
 homepage: ""
