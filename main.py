@@ -941,6 +941,10 @@ class ScreenshotGuardPlugin(Star):
 
         success = False
         for device in targets:
+            # 跳过key为空或无效的设备
+            if not device.get('key') or not device.get('api'):
+                logger.debug(f"[ScreenshotGuard] 跳过无效Bark设备: {device.get('name', 'unknown')}")
+                continue
             url = f"{device['api']}/{encoded_title}/{encoded_body}?group=screenshot_guard&sound=minuet{icon_param}"
             try:
                 async with aiohttp.ClientSession() as session:
