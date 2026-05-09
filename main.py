@@ -52,7 +52,7 @@ BUILTIN_MODES = {
 }
 
 
-@register("screenshot_guard", "沈菀", "远程截屏查看 + App使用监控 + 陪伴模式插件", "3.2.0")
+@register("screenshot_guard", "沈菀", "远程截屏查看 + App使用监控 + 陪伴模式插件", "3.2.3")
 class ScreenshotGuardPlugin(Star):
 
     def __init__(self, context: Context, config: AstrBotConfig = None):
@@ -453,9 +453,9 @@ class ScreenshotGuardPlugin(Star):
     async def _handle_screenshot_upload(self, request):
         try:
             content_type = request.content_type
+            device_name = "unknown"
             if 'multipart' in content_type:
                 reader = await request.multipart()
-                device_name = "unknown"
                 filepath = None
                 filename = None
                 # 遍历所有 multipart field，找到文件字段
@@ -818,14 +818,7 @@ class ScreenshotGuardPlugin(Star):
                 logger.warning("[ScreenshotGuard] 未配置截屏分析模型，跳过分析")
                 return
 
-            # 将图片转为 base64 data URL
-            with open(filepath, 'rb') as img_f:
-                img_data = img_f.read()
-            img_b64 = base64.b64encode(img_data).decode('utf-8')
-            ext = os.path.splitext(filepath)[1].lower()
-            mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
-            data_url = f"data:{mime};base64,{img_b64}"
-
+            # 直接传递本地文件路径，AstrBot的Provider底层会自动处理读取和编码
             vision_prompt = (
                 "请客观描述这张手机截屏的内容：用户正在使用什么App、在看什么内容、页面上有什么关键信息。"
                 "要求：纯客观描述，2-3句话，不超过100字，不要加任何主观评价。"
@@ -833,7 +826,7 @@ class ScreenshotGuardPlugin(Star):
 
             vision_response = await vision_provider.text_chat(
                 prompt=vision_prompt,
-                image_urls=[data_url],
+                image_urls=[filepath],
             )
 
             if hasattr(vision_response, 'completion_text'):
