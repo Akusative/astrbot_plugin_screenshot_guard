@@ -17,6 +17,12 @@
     "hint": "格式：图标URL 或 图标URL|BotQQ号，每行一个。多个图标会随机选择。",
     "type": "text"
   },
+  "bark_sounds": {
+    "default": "",
+    "description": "Bark推送铃声列表（多铃声随机选择，换行分隔）",
+    "hint": "格式：每行一个铃声名称，如 minuet、birdsong。留空则默认使用 minuet。多个铃声会随机选择。",
+    "type": "text"
+  },
   "bark_push_title": {
     "default": "💕",
     "description": "Bark推送标题（温柔模式）",

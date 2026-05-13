@@ -52,7 +52,7 @@ BUILTIN_MODES = {
 }
 
 
-@register("screenshot_guard", "沈菀", "远程截屏查看 + App使用监控 + 陪伴模式插件", "3.2.3")
+@register("screenshot_guard", "沈菀", "远程截屏查看 + App使用监控 + 陪伴模式插件", "3.2.4")
 class ScreenshotGuardPlugin(Star):
 
     def __init__(self, context: Context, config: AstrBotConfig = None):
@@ -93,6 +93,7 @@ class ScreenshotGuardPlugin(Star):
         # 解析配置
         self._bark_devices = self._parse_bark_devices()
         self._bark_icons = self._parse_bark_icons()
+        self._bark_sounds = self._parse_bark_sounds()
         self._builtin_modes = self._parse_builtin_modes()
         self._free_modes = self._parse_free_modes()
 
@@ -111,6 +112,7 @@ class ScreenshotGuardPlugin(Star):
             "bark_devices": "",
             "http_port": 2313,
             "bark_icon_urls": "",
+            "bark_sounds": "",
             "bark_push_title": "\u2764\ufe0f",
             "bark_push_title_strict": "\u26a0\ufe0f",
             "reminder_delay_1": 5,
@@ -133,7 +135,7 @@ class ScreenshotGuardPlugin(Star):
 
         if self._astrbot_config:
             panel_keys = [
-                "bark_devices", "http_port", "bark_icon_urls",
+                "bark_devices", "http_port", "bark_icon_urls", "bark_sounds",
                 "bark_push_title", "bark_push_title_strict",
                 "reminder_delay_1", "reminder_delay_2", "cooldown_minutes",
                 "max_records", "guard_provider", "llm_behavior_prompt",
@@ -195,6 +197,17 @@ class ScreenshotGuardPlugin(Star):
             else:
                 icons.append({"url": line, "bot_qq": ""})
         return icons
+
+    def _parse_bark_sounds(self) -> list:
+        raw = self._config.get("bark_sounds", "")
+        if not raw:
+            return []
+        sounds = []
+        for line in raw.strip().split("\n"):
+            line = line.strip()
+            if line:
+                sounds.append(line)
+        return sounds
 
     def _parse_builtin_modes(self) -> dict:
         """解析固定模式配置。格式：名称|白名单App|黑名单App"""
@@ -276,6 +289,11 @@ class ScreenshotGuardPlugin(Star):
         if not self._bark_icons:
             return ""
         return random.choice(self._bark_icons)["url"]
+
+    def _get_random_sound(self) -> str:
+        if not self._bark_sounds:
+            return "minuet"
+        return random.choice(self._bark_sounds)
 
     def _get_device_by_name(self, device_name: str) -> dict:
         for device in self._bark_devices:
@@ -925,6 +943,8 @@ class ScreenshotGuardPlugin(Star):
         encoded_body = urllib.parse.quote(body)
         icon_url = self._get_random_icon()
         icon_param = f"&icon={urllib.parse.quote(icon_url)}" if icon_url else ""
+        sound_name = self._get_random_sound() or "minuet"
+        sound_param = f"&sound={urllib.parse.quote(sound_name)}"
 
         if target_device:
             device = self._get_device_by_name(target_device)
@@ -938,7 +958,7 @@ class ScreenshotGuardPlugin(Star):
             if not device.get('key') or not device.get('api'):
                 logger.debug(f"[ScreenshotGuard] 跳过无效Bark设备: {device.get('name', 'unknown')}")
                 continue
-            url = f"{device['api']}/{encoded_title}/{encoded_body}?group=screenshot_guard&sound=minuet{icon_param}"
+            url = f"{device['api']}/{encoded_title}/{encoded_body}?group=screenshot_guard{sound_param}{icon_param}"
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url) as resp:

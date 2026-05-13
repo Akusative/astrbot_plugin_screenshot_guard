@@ -117,8 +117,10 @@ APK 下载请前往 [Releases](https://github.com/Akusative/astrbot_plugin_scree
 ### 配置面板项
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `bark_devices` | Bark 设备列表，格式：名称\|Key，每行一个 | - |
+| `bark_devices` | Bark 设备列表，格式：名称\\|Key，每行一个 | - |
 | `http_port` | HTTP 服务端口 | 2313 |
+| `bark_icon_urls` | Bark 推送图标 URL 列表 | - |
+| `bark_sounds` | Bark 推送铃声列表（换行分隔） | - |
 | `guard_provider` | 查岗消息生成模型 | 默认模型 |
 | `screenshot_analysis_provider` | 截屏识图模型（轻量视觉模型） | 使用查岗模型 |
 | `screenshot_chance` | 截屏触发概率（%），支持固定值或范围 | 6.13 |
